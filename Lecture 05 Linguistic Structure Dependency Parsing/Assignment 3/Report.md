@@ -1,5 +1,29 @@
 # CS224N-a3 Dependency Parser
 
+Table of Contents
+=================
+
+   * [CS224N-a3 Dependency Parser](#cs224n-a3-dependency-parser)
+      * [Adam optimizer](#adam-optimizer)
+      * [Dependency Parsing](#dependency-parsing)
+         * [neural network model](#neural-network-model)
+      * [code](#code)
+         * [parser_transitions.py](#parser_transitionspy)
+            * [PartialParse的初始化：](#partialparse的初始化)
+            * [parse_step, 解析出一个dependency：](#parse_step-解析出一个dependency)
+            * [minibatch_parse](#minibatch_parse)
+         * [parser_model with Pytorch!!!](#parser_model-with-pytorch)
+            * [model 的 定义！](#model-的-定义)
+               * [__init__ 初始化：](#__init__-初始化)
+               * [forward](#forward)
+               * [辅助函数：embedding_lookup](#辅助函数embedding_lookup)
+         * [run.py](#runpy)
+            * [工具module](#工具module)
+            * [train_for_epoch &amp; train](#train_for_epoch--train)
+               * [loss_func, optim](#loss_func-optim)
+      * [git reflog](#git-reflog)
+      * [python](#python)
+
 ## Adam optimizer
 
 对于更新不频繁的参数（典型例子：更新 word embedding 中的低频词），我们希望单次步长更大，多学习一些知识；对于更新频繁的参数，我们则希望步长较小，使得学习到的参数更稳定，不至于被单个样本影响太多。
@@ -44,7 +68,7 @@ $$
 
 ## `code`
 
-> 写一个好的文档（注释），表明函数功能，参数（用处、调用方式、大小），返回值，对于没有记忆里的我非常重要。
+> **写一个好的文档（注释），表明函数功能，参数（用处、调用方式、大小），返回值，对于没有记忆里的我非常重要。**
 
 ### `parser_transitions.py`
 
@@ -187,15 +211,107 @@ def embedding_lookup(self, t):
 
 #### `train_for_epoch` & `train`
 
-写成两个函数会很舒适，可以更好的产生提示信息、保存参数。即在一个epoch内使用进度条，每一个epoch保存一次一次pickle。
+写成两个函数会很舒适，可以更好的产生提示信息、保存参数。即在一个epoch内使用进度条，每一个epoch结束保存一次一次pickle。
+
+
+`train_for_epoch`:
+
+要注意的：
+1. (nn.Module).model.train()/eval(): 设置flag。 一些层在train模式与eval模式行为不同，如`dropout`。
+
+> dropout, 训练时work，测试时丢掉
+
+2. tqdm:
 
 ```python
+with tqdm(total=(n_minibatches)) as prog:
+    ...
+    prog.update(1)
+```
 
+3. 训练
+```python
+optimizer.zero_grad()
+loss = 0. # store loss for this batch here
+# train_x = torch.from_numpy(train_x).long()
+# train_y = torch.from_numpy(train_y.nonzero()[1]).long()
+logits = parser.model.forward(train_x)
+loss = loss_func(logits, train_y)
+loss.backward()  # nn.functional.backward()
+optimizer.step()
+### END YOUR CODE
+prog.update(1)
+loss_meter.update(loss.item())
+```
+
+4. 测试
+
+```python
+parser.model.eval() # Places model in "eval" mode, i.e. don't apply dropout layer
+dev_UAS, _ = parser.parse(dev_data)
+print("- dev UAS: {:.2f}".format(dev_UAS * 100.0))
+```
+
+* full
+
+```python
+def train_for_epoch(parser, train_data, dev_data, optimizer, loss_func, batch_size):
+    parser.model.train() # Places model in "train" mode, i.e. apply dropout layer
+    n_minibatches = math.ceil(len(train_data) / batch_size)
+    loss_meter = AverageMeter()
+
+    with tqdm(total=(n_minibatches)) as prog:
+        for i, (train_x, train_y) in enumerate(minibatches(train_data, batch_size)):
+            optimizer.zero_grad()   # remove any baggage in the optimizer
+            loss = 0. # store loss for this batch here
+            train_x = torch.from_numpy(train_x).long()
+            train_y = torch.from_numpy(train_y.nonzero()[1]).long()
+
+            logits = parser.model.forward(train_x)
+            loss = loss_func(logits, train_y)
+            loss.backward()
+            optimizer.step()
+            prog.update(1)
+            loss_meter.update(loss.item())
+
+    print ("Average Train Loss: {}".format(loss_meter.avg))
+
+    print("Evaluating on dev set",)
+    parser.model.eval() # Places model in "eval" mode, i.e. don't apply dropout layer
+    dev_UAS, _ = parser.parse(dev_data)
+    print("- dev UAS: {:.2f}".format(dev_UAS * 100.0))
+    return dev_UAS
+```
+
+`train()`:
+
+1. torch.save(parser.model.state_dict(), output_path)
+
+```python
+def train(parser, train_data, dev_data, output_path, batch_size=1024, n_epochs=10, lr=0.0005):
+    best_dev_UAS = 0
+    optimizer = optim.Adam(parser.model.parameters())
+    loss_func = nn.CrossEntropyLoss()
+
+    for epoch in range(n_epochs):
+        print("Epoch {:} out of {:}".format(epoch + 1, n_epochs))
+        dev_UAS = train_for_epoch(parser, train_data, dev_data, optimizer, loss_func, batch_size)
+        if dev_UAS > best_dev_UAS:
+            best_dev_UAS = dev_UAS
+            print("New best dev UAS! Saving model.")
+            torch.save(parser.model.state_dict(), output_path)
+        print("")
 ```
 
 ##### `loss_func`, `optim`
 
 即： model, loss_func, optimizer
+
+1. optimizer.zero_grad()
+2. forward
+3. [loss_func.backward()]累积梯度
+4. optimizer.step() 
+
 ```python
 from torch import nn, optim
 optimizer = optim.Adam(<model>.model.parameters())  # model中所有为nn.<layer>的成员，都以这种方式直接取出
@@ -203,6 +319,10 @@ optimizer = optim.Adam(<model>.model.parameters())  # model中所有为nn.<layer
 loss_func = nn.CrossEntropyLoss()
 ```
 
+## git reflog
 
+* 可以reset `git reset --hard`
 
+## python
 
+* 字符串可以做乘法

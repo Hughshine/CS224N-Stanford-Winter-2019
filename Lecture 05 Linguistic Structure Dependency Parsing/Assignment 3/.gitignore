@@ -1,0 +1,5 @@
+*.pdf
+*.icloud
+*.weights
+.ipynb_checkpoints/
+MyNotes/
