@@ -1,5 +1,7 @@
 *.pdf
 *.icloud
 *.weights
+*.weight
 .ipynb_checkpoints/
 MyNotes/
+AAA_cs224n_learning_note/
