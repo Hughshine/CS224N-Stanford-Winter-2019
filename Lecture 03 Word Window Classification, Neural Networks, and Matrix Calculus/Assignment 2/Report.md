@@ -94,19 +94,46 @@ $$
 
 ## 三层的网络：word2vec
 
+> 拥有了论文翻译词典，并看透了NN有效的本质，可以愉快的入门NLP啦。感觉像打通了“任督二脉”？
+
+本文不作为词向量的百科介绍，所以仅简述word2vec的灵感。更多内容可以去看[CS224N](https://www.bilibili.com/video/av46216519?from=search&seid=5235449063749658048)的课程呀。
+
+最简单说，词向量就是用一个向量表示一个词。自然有过很多种方法，为什么word2vec一鸣惊人呢。
+1. word2vec可以用于超大数据集。
+2. 可以构造出词向量的线性性。
+
+它属于迭代算法，每一次计算中，选取一个center word, 并在其window size范围内取若干个context word。损失函数希望，提升center word 作为输入，context word 作为输出 的（综合）预测准确率（被称为CBOW算法）；或context word作为输入 center word作为输出 的预测准确率（被称为skip-gram算法）。损失函数自然是交叉熵。
+
+只需理解1个context word的情况，其他的也就迎刃而解了。
+
 ### "bigram" language model
 
 ### CBOW
 
+多个输入，取算数平均，得到隐层输出。此时 input vector，是平均意义上的。
+
 ### skip-gram
+
+多个输出，对于一个中心词，希望提高对若干个（假设为m个）context word的综合准确率。（即一般情况只有一个正向输出，现在不止一个）。就是对m个softmax loss取平均作为最终的loss。
+
+> 或者可以理解为，将softmax输出，与一个 m-hot vector计算交叉熵？不很确定，感觉差不多。
 
 ### furthre optimization: hierarchical softmax & negative sampling
 
-对于网络的优化，最重要是知道损失函数，并推导出每一层权重矩阵的梯度变化，和backprop的梯度。
+对于算法的优化，最重要是知道损失函数变成了什么，进而得知反向传播时每一层都要怎么做。
 
 #### hierarchical softmax
 
+hierarchical softmax 是对 softmax的优化，降低了softmax的时间复杂度。将所有词作为叶子节点，建一个哈夫曼树。对于每个输入，需要过一条完整的路径，在每个内部节点上预测向左侧或右侧走。时间复杂度进而变为了O(log(n)).
+
 #### negative sampling
+
+到目前为止，网络还是很难算，因为它每次要更新词汇量级别维度的矩阵。之前的损失函数，我们是希望提高目标词的预测率，降低非目标词的预测率，实际问题在于，非目标词太多了。我们进而只根据某种分布，选择一定量（假设为m个）非目标词（而非全部），损失函数变为(m+1)个逻辑回归损失。进而大幅度减少了计算量。
+
+分布选择有更高的词频的词。
+
+> 可能会想，时间减少了，那准确率一定会变低吧。（实际反而提升了word vector的质量？）
+> 上面只是简述 inspiration，有时间会进一步提及。
 
 ## CS224N-assignment2
 
